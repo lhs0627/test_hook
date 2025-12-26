@@ -1,0 +1,67 @@
+#!/bin/bash
+###############################################################################
+# Commit-msg hook: Check for Chinese characters in commit message
+# Compatible with macOS and Linux
+###############################################################################
+
+set -e
+
+# Color codes for output
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+GREEN='\033[0;32m'
+NC='\033[0m' # No Color
+
+COMMIT_MSG_FILE=$1
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+echo -e "${GREEN}Running commit-msg Chinese character check...${NC}"
+
+# Python script to extract Chinese characters
+PYTHON_EXTRACT_CHINESE='
+import sys
+import re
+
+def extract_chinese(text):
+    """Extract Chinese characters from text."""
+    chinese = re.findall(r"[\u4e00-\u9fa5]+", text)
+    return " ".join(chinese) if chinese else ""
+
+# Read from stdin
+for line in sys.stdin:
+    line = line.rstrip("\n")
+    chinese = extract_chinese(line)
+    if chinese:
+        print(f"{chinese}")
+'
+
+# Check for Chinese characters
+CHINESE_CHARS=$(echo "$COMMIT_MSG" | python3 -c "import sys, re; text = sys.stdin.read(); chinese = re.findall(r'[\u4e00-\u9fa5]+', text); print(' '.join(chinese) if chinese else '')")
+
+if [ -n "$CHINESE_CHARS" ]; then
+    echo -e "\n${RED}Chinese characters found in commit message!${NC}"
+    echo -e "${YELLOW}Commit message:${NC}"
+    echo "$COMMIT_MSG"
+    echo ""
+    echo -e "${RED}Violations:${NC}"
+
+    # Find and display lines with Chinese characters
+    line_num=0
+    while IFS= read -r line; do
+        ((line_num++))
+        line_chinese=$(echo "$line" | python3 -c "$PYTHON_EXTRACT_CHINESE")
+        if [ -n "$line_chinese" ]; then
+            echo -e "  ${YELLOW}Line $line_num:${NC} $line"
+            echo -e "    ${RED}Found Chinese: $line_chinese${NC}"
+        fi
+    done < "$COMMIT_MSG_FILE"
+
+    echo ""
+    echo -e "${YELLOW}Please use English for commit messages.${NC}"
+    echo -e "${YELLOW}Example: 'feat: add user authentication feature'${NC}"
+    echo ""
+    exit 1
+fi
+
+echo -e "${GREEN}Commit message check passed.${NC}"
+exit 0
